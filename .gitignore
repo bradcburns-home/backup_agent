@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Secrets - never commit
+secrets/
+
+# IDE
+.idea/
+.vscode/
+
+# Data
+*.db

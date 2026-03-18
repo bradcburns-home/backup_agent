@@ -1,0 +1,35 @@
+[project]
+name = "backup-agent"
+version = "0.1.0"
+description = "Automated backup agent — hourly dumps to NFS + GCS via restic with daily restore testing"
+requires-python = ">=3.11"
+dependencies = [
+    "burns-logger",
+    "mcp[cli]>=1.9.0",
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.7.0",
+    "uvicorn>=0.34.0",
+    "starlette>=0.45.0",
+    "docker>=7.0.0",
+    "aiosqlite>=0.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-mock>=3.14",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]

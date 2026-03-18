@@ -1,0 +1,42 @@
+secrets:
+  github_token:
+    file: ~/.github_token
+
+services:
+  backup-agent:
+    build:
+      context: .
+      target: final
+      secrets:
+        - github_token
+    container_name: backup-agent-${ENVIRONMENT_NAME:-prod}
+    environment:
+      - ENVIRONMENT_NAME=${ENVIRONMENT_NAME:-prod}
+      - BACKUP_INTERVAL_SECONDS=${BACKUP_INTERVAL_SECONDS:-3600}
+      - RESTIC_NFS_REPOSITORY=/mnt/nfs/backups/restic-repo
+      - RESTIC_GCS_REPOSITORY=gs:burns-backups-lab-backups:/restic-repo
+      - RESTIC_PASSWORD_FILE=/run/secrets/restic_password
+      - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/backup-agent-sa.json
+      - STATUS_DB_PATH=/data/backup_status.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv:/srv:ro
+      - /mnt/nfs/backups:/mnt/nfs/backups
+      - backup_data:/data
+      - backup_staging:/staging
+      - ./secrets/restic_password:/run/secrets/restic_password:ro
+      - ./secrets/backup-agent-sa.json:/run/secrets/backup-agent-sa.json:ro
+    networks:
+      - mcp_mcp-internal
+    ports:
+      - "8310:8000"
+    restart: unless-stopped
+
+volumes:
+  backup_data:
+  backup_staging:
+
+networks:
+  mcp_mcp-internal:
+    external: true
