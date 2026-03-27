@@ -18,8 +18,9 @@ def orchestrator(test_settings, status_store):
 
 class TestBuildSources:
     def test_all_enabled(self, test_settings):
+        test_settings.source_postgres = True
         sources = _build_sources(test_settings)
-        assert len(sources) == 12
+        assert len(sources) == 14
 
     def test_disable_source(self, test_settings):
         test_settings.source_mongodb = False
@@ -67,8 +68,8 @@ class TestOrchestrator:
 
         mock_build.return_value = [SuccessSource("ok1", orchestrator.settings.backup_staging_dir)]
 
-        with patch.object(orchestrator, "_ship_to_nfs", new_callable=AsyncMock, return_value="nfs123"), \
-             patch.object(orchestrator, "_ship_to_gcs", new_callable=AsyncMock, return_value="gcs456"), \
+        with patch.object(orchestrator, "_ship_to_nfs", new_callable=AsyncMock, return_value=(True, "nfs123")), \
+             patch.object(orchestrator, "_ship_to_gcs", new_callable=AsyncMock, return_value=(True, "gcs456")), \
              patch.object(orchestrator, "_apply_nfs_retention", new_callable=AsyncMock):
 
             result = await orchestrator.run_backup(triggered_by="test")
@@ -94,8 +95,8 @@ class TestOrchestrator:
 
         mock_build.return_value = [SuccessSource("ok1", orchestrator.settings.backup_staging_dir)]
 
-        with patch.object(orchestrator, "_ship_to_nfs", new_callable=AsyncMock, return_value="nfs123"), \
-             patch.object(orchestrator, "_ship_to_gcs", new_callable=AsyncMock, return_value=None), \
+        with patch.object(orchestrator, "_ship_to_nfs", new_callable=AsyncMock, return_value=(True, "nfs123")), \
+             patch.object(orchestrator, "_ship_to_gcs", new_callable=AsyncMock, return_value=(False, None)), \
              patch.object(orchestrator, "_apply_nfs_retention", new_callable=AsyncMock):
 
             result = await orchestrator.run_backup(triggered_by="test")

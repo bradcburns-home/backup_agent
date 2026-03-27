@@ -1,4 +1,4 @@
-"""Docker volume backup source — tar via ephemeral alpine container."""
+"""Docker volume backup source — tar via ephemeral alpine container, piped to stdout."""
 
 from __future__ import annotations
 
@@ -9,7 +9,12 @@ from backup_agent.sources.base import BackupSource, DumpResult
 
 
 class VolumeSource(BackupSource):
-    """Backup a Docker named volume by tarring its contents via an ephemeral container."""
+    """Backup a Docker named volume by tarring its contents via an ephemeral container.
+
+    Pipes tar output to stdout (binary mode) to avoid needing to mount
+    the staging directory — which wouldn't work because the staging path
+    is container-internal, not a host path.
+    """
 
     def __init__(self, name: str, staging_dir: str, volume_name: str):
         super().__init__(name, staging_dir)
@@ -21,30 +26,34 @@ class VolumeSource(BackupSource):
         start = time.monotonic()
 
         try:
-            staging_abs = os.path.abspath(self.staging_dir)
-            filename = f"{self.name}.tar.gz"
-
+            container_name = f"backup-vol-{self.name}"
             proc = await self._run_command(
                 [
                     "docker", "run", "--rm",
+                    "--name", container_name,
+                    "--log-driver", "none",
                     "-v", f"{self.volume_name}:/data:ro",
-                    "-v", f"{staging_abs}:/backup",
                     "alpine",
-                    "tar", "czf", f"/backup/{filename}", "-C", "/data", ".",
+                    "tar", "czf", "-", "-C", "/data", ".",
                 ],
                 timeout=600,
+                binary=True,
             )
 
             duration = time.monotonic() - start
 
             if proc.returncode != 0:
-                self.logger.error("Volume tar failed (rc=%d): %s", proc.returncode, proc.stderr.strip())
+                stderr_text = proc.stderr.decode("utf-8", errors="replace") if isinstance(proc.stderr, bytes) else proc.stderr
+                self.logger.error("Volume tar failed (rc=%d): %s", proc.returncode, stderr_text.strip())
                 return DumpResult(
                     source_name=self.name,
                     success=False,
                     duration_seconds=duration,
-                    error=proc.stderr.strip(),
+                    error=stderr_text.strip(),
                 )
+
+            with open(output_path, "wb") as f:
+                f.write(proc.stdout)
 
             size = os.path.getsize(output_path)
             self.logger.info(
