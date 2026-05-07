@@ -20,7 +20,7 @@ class TestBuildSources:
     def test_all_enabled(self, test_settings):
         test_settings.source_postgres = True
         sources = _build_sources(test_settings)
-        assert len(sources) == 14
+        assert len(sources) == 15
 
     def test_disable_source(self, test_settings):
         test_settings.source_mongodb = False

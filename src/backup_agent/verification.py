@@ -18,24 +18,25 @@ logger = logging.getLogger(__name__)
 
 
 async def run_integrity_check(
-    nfs_client: ResticClient,
+    nfs_client: ResticClient | None = None,
     gcs_client: ResticClient | None = None,
     subset: str | None = None,
 ) -> dict[str, Any]:
-    """Run restic check on the NFS repo (and optionally GCS)."""
+    """Run restic check on the requested repositories."""
     results: dict[str, Any] = {}
 
-    logger.info("Running NFS integrity check (subset=%s)", subset)
-    nfs_result = await nfs_client.check(read_data_subset=subset)
-    results["nfs"] = {
-        "status": "pass" if nfs_result.success else "fail",
-        "output": nfs_result.stdout[:2000] if nfs_result.stdout else "",
-        "error": nfs_result.stderr[:2000] if not nfs_result.success else "",
-    }
-    if nfs_result.success:
-        logger.info("NFS integrity check passed")
-    else:
-        logger.error("NFS integrity check FAILED: %s", nfs_result.stderr[:500])
+    if nfs_client:
+        logger.info("Running NFS integrity check (subset=%s)", subset)
+        nfs_result = await nfs_client.check(read_data_subset=subset)
+        results["nfs"] = {
+            "status": "pass" if nfs_result.success else "fail",
+            "output": nfs_result.stdout[:2000] if nfs_result.stdout else "",
+            "error": nfs_result.stderr[:2000] if not nfs_result.success else "",
+        }
+        if nfs_result.success:
+            logger.info("NFS integrity check passed")
+        else:
+            logger.error("NFS integrity check FAILED: %s", nfs_result.stderr[:500])
 
     if gcs_client:
         logger.info("Running GCS integrity check")
@@ -73,11 +74,7 @@ async def run_restore_test(
             await status_store.record_restore_test_finish(test_id, "failure", {"error": "no_snapshots"})
             return {"status": "failure", "error": "cannot_list_snapshots"}
 
-        snapshot_list = snapshots_result.json_output
-        if isinstance(snapshot_list, list) and snapshot_list:
-            snapshot_id = snapshot_list[0].get("short_id") or snapshot_list[0].get("id", "latest")
-        else:
-            snapshot_id = "latest"
+        snapshot_id = _select_latest_snapshot(snapshots_result.json_output)
 
         logger.info("Restoring snapshot %s to %s for validation", snapshot_id, temp_dir)
         restore_result = await nfs_client.restore(snapshot_id, temp_dir)
@@ -110,22 +107,54 @@ async def run_restore_test(
 
 
 def _validate_restored_files(restore_dir: str) -> dict[str, Any]:
-    """Walk the restored directory and validate each known source file."""
+    """Walk the restored directory tree and validate every restored file.
+
+    `restic restore` preserves the original absolute path structure, so files
+    land at e.g. ``<restore_dir>/staging/mongodb.archive`` rather than directly
+    under ``restore_dir``. We walk the full tree and key results by path
+    relative to ``restore_dir`` so identically-named files in different
+    subtrees stay distinct.
+    """
     results: dict[str, Any] = {}
 
-    for filename in os.listdir(restore_dir):
-        filepath = os.path.join(restore_dir, filename)
-        if not os.path.isfile(filepath):
-            continue
+    for dirpath, _dirnames, filenames in os.walk(restore_dir):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            if not os.path.isfile(filepath):
+                continue
 
-        size = os.path.getsize(filepath)
-        if size == 0:
-            results[filename] = {"status": "fail", "reason": "empty_file", "size": 0}
-            continue
+            relpath = os.path.relpath(filepath, restore_dir)
+            size = os.path.getsize(filepath)
+            if size == 0:
+                results[relpath] = {"status": "fail", "reason": "empty_file", "size": 0}
+                continue
 
-        results[filename] = {"status": "pass", "size": size}
+            results[relpath] = {"status": "pass", "size": size}
 
     if not results:
         results["_no_files"] = {"status": "fail", "reason": "no_files_restored"}
 
     return results
+
+
+def _select_latest_snapshot(snapshot_list: Any) -> str:
+    """Pick the most recent snapshot id from `restic snapshots` JSON output.
+
+    `restic snapshots --latest 1` returns one snapshot per (host, paths) tuple,
+    not one snapshot overall. Because the orchestrator's set of source paths
+    grows over time as new sources are enabled, restic returns multiple
+    "latest" snapshots, sorted ascending by time. We want the globally newest
+    one, so we sort by ``time`` descending and take index 0.
+    """
+    if not isinstance(snapshot_list, list) or not snapshot_list:
+        return "latest"
+
+    sorted_snaps = sorted(
+        snapshot_list,
+        key=lambda s: s.get("time", "") if isinstance(s, dict) else "",
+        reverse=True,
+    )
+    newest = sorted_snaps[0]
+    if not isinstance(newest, dict):
+        return "latest"
+    return newest.get("short_id") or newest.get("id") or "latest"
