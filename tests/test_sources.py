@@ -73,8 +73,8 @@ class TestMongoDBSource:
     async def test_dump_success(self, mock_run, tmp_staging):
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout="binary-archive-data",
-            stderr="",
+            stdout=b"binary-archive-data",
+            stderr=b"",
         )
 
         source = MongoDBSource(tmp_staging, container="test-mongo", database="testdb")
@@ -89,8 +89,8 @@ class TestMongoDBSource:
     async def test_dump_failure(self, mock_run, tmp_staging):
         mock_run.return_value = MagicMock(
             returncode=1,
-            stdout="",
-            stderr="connection refused",
+            stdout=b"",
+            stderr=b"connection refused",
         )
 
         source = MongoDBSource(tmp_staging, container="test-mongo", database="testdb")

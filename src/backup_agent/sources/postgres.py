@@ -17,14 +17,15 @@ class PostgresSource(BackupSource):
         container: str = "vectordb",
         database: str = "mydatabase",
         user: str = "myuser",
+        name: str | None = None,
     ):
-        super().__init__("postgres", staging_dir)
+        super().__init__(name or f"postgres_{database}", staging_dir)
         self.container = container
         self.database = database
         self.user = user
 
     async def dump(self) -> DumpResult:
-        output_path = os.path.join(self.staging_dir, "postgres_dump.Fc")
+        output_path = os.path.join(self.staging_dir, f"{self.name}_dump.Fc")
         dump_path_in_container = "/tmp/pg_dump.Fc"
         self.logger.info(
             "Starting PostgreSQL dump from %s (db=%s, user=%s)",

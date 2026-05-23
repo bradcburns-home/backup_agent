@@ -63,9 +63,13 @@ class BackupSource(ABC):
         if result.output_path and os.path.exists(result.output_path):
             await asyncio.to_thread(os.remove, result.output_path)
 
-    async def _run_command(self, cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess[str]:
+    async def _run_command(
+        self, cmd: list[str], timeout: int = 300, binary: bool = False,
+    ) -> subprocess.CompletedProcess:
         """Run a shell command via asyncio.to_thread."""
-        def _exec() -> subprocess.CompletedProcess[str]:
-            return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        def _exec() -> subprocess.CompletedProcess:
+            return subprocess.run(
+                cmd, capture_output=True, text=not binary, timeout=timeout,
+            )
 
         return await asyncio.to_thread(_exec)

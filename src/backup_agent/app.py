@@ -155,7 +155,9 @@ class BackupApp:
                     subset = f"{week_of_month}/4"
                     logger.info("Starting weekly integrity check (subset=%s)", subset)
                     await run_integrity_check(
-                        self.orchestrator.nfs_client, subset=subset,
+                        nfs_client=self.orchestrator.nfs_client,
+                        gcs_client=self.orchestrator.gcs_client,
+                        subset=subset,
                     )
                     await asyncio.sleep(7200)
                 else:
@@ -176,7 +178,11 @@ def get_app() -> BackupApp:
 
 
 def create_asgi_app() -> Any:
-    """Create the ASGI application with lifespan management."""
+    """Create the ASGI application with lifespan management.
+
+    Wraps the inner MCP app's lifespan so the task group is properly
+    initialized, while also starting/stopping our scheduler.
+    """
     backup_app = get_app()
 
     inner_app = backup_app.mcp.streamable_http_app()
@@ -187,15 +193,17 @@ def create_asgi_app() -> Any:
 
         async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
             if scope["type"] == "lifespan":
-                while True:
-                    message = await receive()
-                    if message["type"] == "lifespan.startup":
+                async def wrapped_receive() -> Any:
+                    return await receive()
+
+                async def wrapped_send(message: Any) -> None:
+                    if message["type"] == "lifespan.startup.complete":
                         await backup_app.start_scheduler()
-                        await send({"type": "lifespan.startup.complete"})
-                    elif message["type"] == "lifespan.shutdown":
+                    elif message["type"] == "lifespan.shutdown.complete":
                         await backup_app.stop_scheduler()
-                        await send({"type": "lifespan.shutdown.complete"})
-                        return
+                    await send(message)
+
+                await self._app(scope, wrapped_receive, wrapped_send)
             else:
                 await self._app(scope, receive, send)
 

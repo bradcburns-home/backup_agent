@@ -1,4 +1,4 @@
-"""SQLite backup source — sqlite3 .backup via docker exec."""
+"""SQLite backup source — uses local sqlite3 binary on host-mounted database files."""
 
 from __future__ import annotations
 
@@ -9,32 +9,39 @@ from backup_agent.sources.base import BackupSource, DumpResult
 
 
 class SQLiteSource(BackupSource):
-    """Backup a SQLite database inside a running container using the backup API."""
+    """Backup a SQLite database accessible via a host-mounted path.
+
+    Since /srv is mounted into the backup agent container, we can access
+    SQLite files directly and use the container's own sqlite3 to perform
+    an online backup (safe even if the database is in use).
+    """
 
     def __init__(
         self,
         name: str,
         staging_dir: str,
-        container: str,
-        db_path_in_container: str,
-        host_data_dir: str | None = None,
+        host_db_path: str,
     ):
         super().__init__(name, staging_dir)
-        self.container = container
-        self.db_path_in_container = db_path_in_container
-        self.host_data_dir = host_data_dir
+        self.host_db_path = host_db_path
 
     async def dump(self) -> DumpResult:
         output_path = os.path.join(self.staging_dir, f"{self.name}.sqlite")
-        backup_path_in_container = f"{self.db_path_in_container}.backup"
-        self.logger.info("Starting SQLite backup from %s:%s", self.container, self.db_path_in_container)
+        self.logger.info("Starting SQLite backup: %s", self.host_db_path)
         start = time.monotonic()
 
         try:
+            if not os.path.exists(self.host_db_path):
+                return DumpResult(
+                    source_name=self.name,
+                    success=False,
+                    duration_seconds=time.monotonic() - start,
+                    error=f"Database file not found: {self.host_db_path}",
+                )
+
             proc = await self._run_command([
-                "docker", "exec", self.container,
-                "sqlite3", self.db_path_in_container,
-                f".backup '{backup_path_in_container}'",
+                "sqlite3", self.host_db_path,
+                f".backup '{output_path}'",
             ])
 
             duration = time.monotonic() - start
@@ -51,36 +58,17 @@ class SQLiteSource(BackupSource):
                     error=proc.stderr.strip(),
                 )
 
-            cp_proc = await self._run_command([
-                "docker", "cp",
-                f"{self.container}:{backup_path_in_container}",
-                output_path,
-            ])
-
-            if cp_proc.returncode != 0:
-                self.logger.error("docker cp failed: %s", cp_proc.stderr.strip())
-                return DumpResult(
-                    source_name=self.name,
-                    success=False,
-                    duration_seconds=time.monotonic() - start,
-                    error=cp_proc.stderr.strip(),
-                )
-
-            await self._run_command([
-                "docker", "exec", self.container, "rm", "-f", backup_path_in_container,
-            ])
-
             size = os.path.getsize(output_path)
             self.logger.info(
                 "SQLite backup complete: %.1f KB in %.1fs",
-                size / 1024, time.monotonic() - start,
+                size / 1024, duration,
             )
             return DumpResult(
                 source_name=self.name,
                 success=True,
                 output_path=output_path,
                 size_bytes=size,
-                duration_seconds=time.monotonic() - start,
+                duration_seconds=duration,
             )
         except Exception as e:
             self.logger.error("SQLite backup failed: %s", e, exc_info=True)

@@ -16,7 +16,10 @@ class _SourceFlags(BaseSettings):
     source_npm_sqlite: bool = True
     source_gateway_sqlite: bool = True
     source_chromadb: bool = True
-    source_postgres: bool = True
+    source_postgres: bool = False
+    source_postgres_fax: bool = True
+    source_postgres_agent_hub: bool = True
+    source_postgres_meds: bool = True
     source_portainer: bool = True
     source_ha_config: bool = True
     source_mcp_identities: bool = True
@@ -33,7 +36,7 @@ class Settings(_SourceFlags):
     restic_nfs_repository: str = "/mnt/nfs/backups/restic-repo"
     restic_gcs_repository: str = "gs:burns-backups-lab-backups:/restic-repo"
     restic_password_file: str = "/run/secrets/restic_password"
-    google_application_credentials: str = "/run/secrets/backup-agent-sa.json"
+    google_application_credentials: str = "/run/secrets/gcs-credentials.json"
 
     nfs_retention_hourly: int = 24
     nfs_retention_daily: int = 7

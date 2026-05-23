@@ -51,8 +51,11 @@ class ResticClient:
             env["GOOGLE_APPLICATION_CREDENTIALS"] = self.google_credentials
         return env
 
-    def _run_sync(self, args: list[str], json_output: bool = False) -> ResticResult:
-        cmd = ["restic", "--no-lock", *args]
+    def _run_sync(self, args: list[str], json_output: bool = False, use_lock: bool = False) -> ResticResult:
+        cmd = ["restic"]
+        if not use_lock:
+            cmd.append("--no-lock")
+        cmd.extend(args)
         if json_output:
             cmd.append("--json")
 
@@ -70,7 +73,19 @@ class ResticClient:
             try:
                 parsed_json = json.loads(proc.stdout)
             except json.JSONDecodeError:
-                logger.warning("Failed to parse restic JSON output")
+                # restic backup --json emits NDJSON (one object per line);
+                # the summary with snapshot_id is typically the last line
+                for line in reversed(proc.stdout.strip().splitlines()):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        parsed_json = json.loads(line)
+                        break
+                    except json.JSONDecodeError:
+                        continue
+                if parsed_json is None:
+                    logger.warning("Failed to parse restic JSON output")
 
         result = ResticResult(
             returncode=proc.returncode,
@@ -124,7 +139,7 @@ class ResticClient:
             "--keep-weekly", str(keep_weekly),
             "--keep-monthly", str(keep_monthly),
         ]
-        return await asyncio.to_thread(self._run_sync, args, True)
+        return await asyncio.to_thread(self._run_sync, args, True, use_lock=True)
 
     async def check(self, read_data_subset: str | None = None) -> ResticResult:
         """Run restic check for repository integrity."""

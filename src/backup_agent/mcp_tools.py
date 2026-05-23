@@ -100,12 +100,22 @@ def register_tools(app: BackupApp) -> None:
             return _error_response("Failed to get source config", e)
 
     @mcp.tool()
-    async def check_integrity() -> str:
-        """Run restic check on the NFS repository to verify data integrity.
-        Use when you want to confirm the backup repository hasn't corrupted."""
+    async def check_integrity(repository: str = "both") -> str:
+        """Run restic check to verify backup data integrity.
+
+        Args:
+            repository: Which repository to check — "nfs", "gcs", or "both" (default).
+        """
         try:
             from backup_agent.verification import run_integrity_check
-            results = await run_integrity_check(app.orchestrator.nfs_client)
+            nfs = app.orchestrator.nfs_client if repository in ("nfs", "both") else None
+            gcs = app.orchestrator.gcs_client if repository in ("gcs", "both") else None
+            if not nfs and not gcs:
+                return json.dumps({"error": f"Invalid repository: {repository!r}. Use 'nfs', 'gcs', or 'both'."})
+            results = await run_integrity_check(
+                nfs_client=nfs,
+                gcs_client=gcs,
+            )
             return json.dumps(results, default=str)
         except Exception as e:
             return _error_response("Failed to run integrity check", e)

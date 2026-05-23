@@ -31,14 +31,16 @@ class DirectorySource(BackupSource):
                     error=f"Source directory does not exist: {self.source_path}",
                 )
 
-            cmd = ["tar", "czf", output_path, "-C", os.path.dirname(self.source_path), os.path.basename(self.source_path)]
+            cmd = ["tar"]
             for exc in self.excludes:
-                cmd.insert(2, f"--exclude={exc}")
+                cmd.append(f"--exclude={exc}")
+            cmd.extend(["-czf", output_path, "-C", os.path.dirname(self.source_path), os.path.basename(self.source_path)])
 
             proc = await self._run_command(cmd, timeout=600)
             duration = time.monotonic() - start
 
-            if proc.returncode != 0:
+            # rc=1 means "some files changed during archiving" — acceptable
+            if proc.returncode > 1:
                 self.logger.error("tar failed (rc=%d): %s", proc.returncode, proc.stderr.strip())
                 return DumpResult(
                     source_name=self.name,
@@ -46,6 +48,8 @@ class DirectorySource(BackupSource):
                     duration_seconds=duration,
                     error=proc.stderr.strip(),
                 )
+            if proc.returncode == 1:
+                self.logger.warning("tar completed with warnings: %s", proc.stderr.strip())
 
             size = os.path.getsize(output_path)
             self.logger.info(

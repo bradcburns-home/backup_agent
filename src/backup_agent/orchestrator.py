@@ -32,8 +32,7 @@ def _build_sources(settings: Settings) -> list[BackupSource]:
         sources.append(SQLiteSource(
             name="npm_sqlite",
             staging_dir=staging,
-            container="nginx-proxy-manager",
-            db_path_in_container="/data/database.sqlite",
+            host_db_path="/srv/nginx-proxy-manager/data/database.sqlite",
         ))
 
     if settings.source_gateway_sqlite:
@@ -44,6 +43,21 @@ def _build_sources(settings: Settings) -> list[BackupSource]:
 
     if settings.source_postgres:
         sources.append(PostgresSource(staging))
+
+    if settings.source_postgres_fax:
+        sources.append(PostgresSource(
+            staging, container="postgres-shared", database="fax", user="postgres",
+        ))
+
+    if settings.source_postgres_agent_hub:
+        sources.append(PostgresSource(
+            staging, container="postgres-shared", database="agent_hub", user="postgres",
+        ))
+
+    if settings.source_postgres_meds:
+        sources.append(PostgresSource(
+            staging, container="postgres-shared", database="meds", user="postgres",
+        ))
 
     if settings.source_portainer:
         sources.append(DirectorySource("portainer", staging, "/srv/portainer/portainer_data"))
@@ -151,23 +165,23 @@ class BackupOrchestrator:
 
             dump_paths = [r.output_path for r in successful_dumps]
 
-            nfs_snapshot_id = await self._ship_to_nfs(dump_paths)
-            gcs_snapshot_id = await self._ship_to_gcs(dump_paths)
+            nfs_ok, nfs_snapshot_id = await self._ship_to_nfs(dump_paths)
+            gcs_ok, gcs_snapshot_id = await self._ship_to_gcs(dump_paths)
 
             for dr in dump_results:
                 for source in sources:
                     if source.name == dr.source_name:
                         await source.cleanup(dr)
 
-            if nfs_snapshot_id:
+            if nfs_ok:
                 await self._apply_nfs_retention()
 
             failed_sources = [name for name, info in source_results.items() if info["status"] != "success"]
-            if not nfs_snapshot_id and not gcs_snapshot_id:
+            if not nfs_ok and not gcs_ok:
                 overall = "failure"
             elif failed_sources:
                 overall = "partial_failure"
-            elif not gcs_snapshot_id:
+            elif not gcs_ok:
                 overall = "partial_failure"
             else:
                 overall = "success"
@@ -183,8 +197,8 @@ class BackupOrchestrator:
             logger.info(
                 "Backup run complete: %s (%.1fs, %d sources, %d failed, NFS=%s, GCS=%s)",
                 overall, duration, len(sources), len(failed_sources),
-                "ok" if nfs_snapshot_id else "FAILED",
-                "ok" if gcs_snapshot_id else "FAILED",
+                "ok" if nfs_ok else "FAILED",
+                "ok" if gcs_ok else "FAILED",
             )
 
             return {
@@ -205,8 +219,8 @@ class BackupOrchestrator:
         finally:
             self._running = False
 
-    async def _ship_to_nfs(self, paths: list[str]) -> str | None:
-        """Ship dump files to the NFS restic repository."""
+    async def _ship_to_nfs(self, paths: list[str]) -> tuple[bool, str | None]:
+        """Ship dump files to the NFS restic repository. Returns (success, snapshot_id)."""
         logger.info("Shipping to NFS: %s", self.settings.restic_nfs_repository)
         try:
             result = await self.nfs_client.backup(paths, tags=["backup-agent"])
@@ -215,15 +229,15 @@ class BackupOrchestrator:
                 if result.json_output and isinstance(result.json_output, dict):
                     snapshot_id = result.json_output.get("snapshot_id")
                 logger.info("NFS backup succeeded (snapshot=%s)", snapshot_id)
-                return snapshot_id
+                return True, snapshot_id
             logger.error("NFS backup failed: %s", result.stderr.strip())
-            return None
+            return False, None
         except Exception:
             logger.exception("NFS backup failed with exception")
-            return None
+            return False, None
 
-    async def _ship_to_gcs(self, paths: list[str]) -> str | None:
-        """Ship dump files to the GCS restic repository."""
+    async def _ship_to_gcs(self, paths: list[str]) -> tuple[bool, str | None]:
+        """Ship dump files to the GCS restic repository. Returns (success, snapshot_id)."""
         logger.info("Shipping to GCS: %s", self.settings.restic_gcs_repository)
         try:
             result = await self.gcs_client.backup(paths, tags=["backup-agent"])
@@ -232,12 +246,12 @@ class BackupOrchestrator:
                 if result.json_output and isinstance(result.json_output, dict):
                     snapshot_id = result.json_output.get("snapshot_id")
                 logger.info("GCS backup succeeded (snapshot=%s)", snapshot_id)
-                return snapshot_id
+                return True, snapshot_id
             logger.warning("GCS backup failed (offsite copy missed): %s", result.stderr.strip())
-            return None
+            return False, None
         except Exception:
             logger.exception("GCS backup failed with exception")
-            return None
+            return False, None
 
     async def _apply_nfs_retention(self) -> None:
         """Apply retention policy to the NFS repository."""

@@ -25,26 +25,28 @@ class MongoDBSource(BackupSource):
         start = time.monotonic()
 
         try:
-            proc = await self._run_command([
-                "docker", "exec", self.container,
-                "mongodump", "--db", self.database, "--archive",
-            ])
+            proc = await self._run_command(
+                [
+                    "docker", "exec", self.container,
+                    "mongodump", "--db", self.database, "--archive",
+                ],
+                binary=True,
+            )
 
             duration = time.monotonic() - start
 
             if proc.returncode != 0:
-                self.logger.error(
-                    "mongodump failed (rc=%d): %s", proc.returncode, proc.stderr.strip()
-                )
+                stderr_text = proc.stderr.decode("utf-8", errors="replace") if isinstance(proc.stderr, bytes) else proc.stderr
+                self.logger.error("mongodump failed (rc=%d): %s", proc.returncode, stderr_text.strip())
                 return DumpResult(
                     source_name=self.name,
                     success=False,
                     duration_seconds=duration,
-                    error=proc.stderr.strip(),
+                    error=stderr_text.strip(),
                 )
 
             with open(output_path, "wb") as f:
-                f.write(proc.stdout.encode("latin-1") if isinstance(proc.stdout, str) else proc.stdout)
+                f.write(proc.stdout)
 
             size = os.path.getsize(output_path)
             self.logger.info(

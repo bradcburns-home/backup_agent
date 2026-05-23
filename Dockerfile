@@ -8,6 +8,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     sqlite3 \
+    bzip2 \
+    gnupg \
+    postgresql-client \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+       > /etc/apt/sources.list.d/docker.list \
+    && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
+    && RESTIC_VERSION=0.17.3 \
+    && curl -fsSL "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2" \
+       | bunzip2 > /usr/local/bin/restic \
+    && chmod 755 /usr/local/bin/restic \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
