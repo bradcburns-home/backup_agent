@@ -22,6 +22,19 @@ from backup_agent.verification import run_integrity_check, run_restore_test
 logger = logging.getLogger(__name__)
 
 
+def _integrity_check_subset(day_of_month: int) -> str:
+    """Return the ``--read-data-subset=n/4`` argument for the weekly check.
+
+    The intent is to read 1/4 of the repository each Sunday so the full
+    dataset is verified once a month. Naive ``(day - 1) // 7 + 1`` produces
+    ``5`` for days 29-31, which restic rejects (requires ``n <= t``). When a
+    Sunday lands on day 29-31 we clamp to week 4 \u2014 the spillover days reuse
+    the week-4 subset rather than blowing up.
+    """
+    week_of_month = (day_of_month - 1) // 7 + 1
+    return f"{min(week_of_month, 4)}/4"
+
+
 class BackupApp:
     """Container for the backup agent's shared state."""
 
@@ -151,8 +164,7 @@ class BackupApp:
                 now = datetime.now(timezone.utc)
                 day_name = now.strftime("%A")
                 if day_name == self.settings.integrity_check_day and now.hour == 3:
-                    week_of_month = (now.day - 1) // 7 + 1
-                    subset = f"{week_of_month}/4"
+                    subset = _integrity_check_subset(now.day)
                     logger.info("Starting weekly integrity check (subset=%s)", subset)
                     await run_integrity_check(
                         nfs_client=self.orchestrator.nfs_client,
