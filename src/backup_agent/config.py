@@ -20,6 +20,7 @@ class _SourceFlags(BaseSettings):
     source_postgres_fax: bool = True
     source_postgres_agent_hub: bool = True
     source_postgres_meds: bool = True
+    source_postgres_burns_config: bool = False  # flip true after the burns_config DB exists
     source_portainer: bool = True
     source_ha_config: bool = True
     source_mcp_identities: bool = True
