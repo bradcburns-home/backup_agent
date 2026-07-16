@@ -29,6 +29,7 @@ class _SourceFlags(BaseSettings):
     source_mosquitto: bool = True
     source_loki_noise: bool = True
     source_letsencrypt: bool = True
+    source_hermes_agent: bool = True
 
 
 class Settings(_SourceFlags):

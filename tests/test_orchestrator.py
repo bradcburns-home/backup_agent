@@ -20,7 +20,7 @@ class TestBuildSources:
     def test_all_enabled(self, test_settings):
         test_settings.source_postgres = True
         sources = _build_sources(test_settings)
-        assert len(sources) == 16  # +postgres_plaid (2026-07, Birmingham-Ops#415)
+        assert len(sources) == 17  # +hermes_agent_data (2026-07, Hermes Agent deployment)
 
     def test_disable_source(self, test_settings):
         test_settings.source_mongodb = False

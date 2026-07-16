@@ -101,6 +101,11 @@ def _build_sources(settings: Settings) -> list[BackupSource]:
             "letsencrypt", staging, "/srv/nginx-proxy-manager/letsencrypt",
         ))
 
+    if settings.source_hermes_agent:
+        sources.append(DirectorySource(
+            "hermes_agent_data", staging, "/srv/hermes_agent/data",
+        ))
+
     return sources
 
 
