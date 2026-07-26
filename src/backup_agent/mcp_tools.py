@@ -76,19 +76,15 @@ def register_tools(app: BackupApp) -> None:
         try:
             from backup_agent.config import get_settings
             s = get_settings()
+            # Derived from the settings model, not hand-listed. The hand-written
+            # dict had drifted six sources out of date — the postgres_* splits and
+            # hermes_agent were being backed up while this tool reported they did
+            # not exist. Under-reporting coverage is the worst failure available to
+            # a tool whose only job is saying what is protected.
             sources = {
-                "mongodb": s.source_mongodb,
-                "npm_sqlite": s.source_npm_sqlite,
-                "gateway_sqlite": s.source_gateway_sqlite,
-                "chromadb": s.source_chromadb,
-                "postgres": s.source_postgres,
-                "portainer": s.source_portainer,
-                "ha_config": s.source_ha_config,
-                "mcp_identities": s.source_mcp_identities,
-                "maintenance_tasks": s.source_maintenance_tasks,
-                "mosquitto": s.source_mosquitto,
-                "loki_noise": s.source_loki_noise,
-                "letsencrypt": s.source_letsencrypt,
+                name.removeprefix("source_"): getattr(s, name)
+                for name in type(s).model_fields
+                if name.startswith("source_")
             }
             return json.dumps({
                 "sources": sources,

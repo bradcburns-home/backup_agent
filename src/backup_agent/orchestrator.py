@@ -106,6 +106,17 @@ def _build_sources(settings: Settings) -> list[BackupSource]:
             "hermes_agent_data", staging, "/srv/hermes_agent/data",
         ))
 
+    # The LTD claim workspace: pinned source documents, the curated evidence
+    # registry, and the shipped editions. Nothing is excluded, including .git —
+    # this is a local-only git repo with no remote by design (it holds PHI, and no
+    # standard covers PHI in GitHub), so restic's encrypted GCS repo is the only
+    # offsite copy that exists. An edition is also a record of what counsel and
+    # the carrier were sent, which has evidentiary value of its own.
+    if settings.source_claim_packet:
+        sources.append(DirectorySource(
+            "claim_packet", staging, "/srv/claim_packet_data",
+        ))
+
     return sources
 
 

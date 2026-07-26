@@ -30,6 +30,7 @@ class _SourceFlags(BaseSettings):
     source_loki_noise: bool = True
     source_letsencrypt: bool = True
     source_hermes_agent: bool = True
+    source_claim_packet: bool = True
 
 
 class Settings(_SourceFlags):

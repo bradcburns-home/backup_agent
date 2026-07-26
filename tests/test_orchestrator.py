@@ -20,7 +20,38 @@ class TestBuildSources:
     def test_all_enabled(self, test_settings):
         test_settings.source_postgres = True
         sources = _build_sources(test_settings)
-        assert len(sources) == 17  # +hermes_agent_data (2026-07, Hermes Agent deployment)
+        assert len(sources) == 18  # +claim_packet (2026-07, LTD evidence packet workspace)
+
+    def test_every_flag_builds_a_source(self, test_settings):
+        """A flag with no source behind it reports coverage that does not exist.
+
+        The enable flags, the builder, and the MCP tool's report were three
+        hand-maintained lists of the same thing, and they had drifted: six sources
+        were backed up while `get_source_config` said they were not configured.
+        The tool now derives its report from the flags, and this holds the flags to
+        the builder from the other side.
+        """
+        test_settings.source_postgres = True
+        flags = {
+            name.removeprefix("source_")
+            for name in type(test_settings).model_fields
+            if name.startswith("source_")
+        }
+        built = {source.name for source in _build_sources(test_settings)}
+        # `postgres_*` flags fan out to per-database sources named for the database,
+        # and hermes_agent's source is named for the directory it archives.
+        aliases = {"hermes_agent": "hermes_agent_data"}
+        unbuilt = {
+            flag
+            for flag in flags
+            if aliases.get(flag, flag) not in built and not flag.startswith("postgres")
+        }
+        assert not unbuilt, f"flags with no source behind them: {sorted(unbuilt)}"
+
+    def test_the_claim_workspace_is_covered(self, test_settings):
+        """It is a local-only git repo with no remote, so restic is the only copy."""
+        sources = {s.name: s for s in _build_sources(test_settings)}
+        assert sources["claim_packet"].source_path == "/srv/claim_packet_data"
 
     def test_disable_source(self, test_settings):
         test_settings.source_mongodb = False
