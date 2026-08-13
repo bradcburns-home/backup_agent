@@ -20,7 +20,7 @@ class TestBuildSources:
     def test_all_enabled(self, test_settings):
         test_settings.source_postgres = True
         sources = _build_sources(test_settings)
-        assert len(sources) == 18  # +claim_packet (2026-07, LTD evidence packet workspace)
+        assert len(sources) == 19  # +variant (2026-08, Variant forecasting pipeline)
 
     def test_every_flag_builds_a_source(self, test_settings):
         """A flag with no source behind it reports coverage that does not exist.

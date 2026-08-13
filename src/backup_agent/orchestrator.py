@@ -69,6 +69,11 @@ def _build_sources(settings: Settings) -> list[BackupSource]:
             staging, container="postgres-shared", database="plaid", user="postgres",
         ))
 
+    if settings.source_postgres_variant:
+        sources.append(PostgresSource(
+            staging, container="postgres-shared", database="variant", user="postgres",
+        ))
+
     if settings.source_portainer:
         sources.append(DirectorySource("portainer", staging, "/srv/portainer/portainer_data"))
 
